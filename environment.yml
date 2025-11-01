@@ -1,0 +1,34 @@
+name: qwen3launcher
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  # Core Python - choose one:
+  - python=3.13  # Cutting edge
+  # - python=3.12  # More stable alternative
+  
+  # Build tools (needed for compilation)
+  - cmake
+  - ninja  # Faster builds
+  
+  # Essential packages
+  - pip
+  - numpy
+  - setuptools
+  - wheel
+  
+  # Runtime utilities
+  - colorama  # Colored terminal output
+  - tqdm      # Progress bars
+  - ipython   # Better interactive shell
+  - jupyter   # Optional: for notebooks
+  
+  - pip:
+    # Build dependencies
+    - setuptools-scm
+    - scikit-build-core
+    
+    # GPU monitoring
+    - pynvml  # NVIDIA GPU management
+    
+    # Don't install llama-cpp-python here - we'll build it after
