@@ -277,130 +277,6 @@ if not gpu_info.get('gpu_model') and not gpu_info.get('error'):
     response = input("Continue anyway? (y/n): ")
     if response.lower() != 'y':
         sys.exit(0)
-        
-        # Get comprehensive GPU info via nvidia-smi
-        queries = [
-            ('Basic Info', 'name,compute_cap,driver_version,cuda_version', ['GPU Model', 'Compute Capability', 'Driver Version', 'CUDA Version']),
-            ('Memory Info', 'memory.total,memory.free,memory.used', ['Total Memory', 'Free Memory', 'Used Memory']),
-            ('Clock Speeds', 'clocks.current.graphics,clocks.max.graphics,clocks.current.memory,clocks.max.memory', 
-             ['Current GPU Clock', 'Max GPU Clock', 'Current Mem Clock', 'Max Mem Clock']),
-            ('Power/Thermal', 'power.draw,power.limit,temperature.gpu,temperature.memory', 
-             ['Power Draw', 'Power Limit', 'GPU Temp', 'Memory Temp']),
-            ('Utilization', 'utilization.gpu,utilization.memory', ['GPU Utilization', 'Memory Controller']),
-            ('PCIe Info', 'pcie.link.gen.current,pcie.link.gen.max,pcie.link.width.current,pcie.link.width.max', 
-             ['Current PCIe Gen', 'Max PCIe Gen', 'Current Width', 'Max Width']),
-        ]
-        
-        for category, query, labels in queries:
-            result = subprocess.run(
-                ['nvidia-smi', f'--query-gpu={query}', '--format=csv,noheader,nounits'],
-                capture_output=True, text=True, shell=True
-            )
-            
-            if result.returncode == 0:
-                values = result.stdout.strip().split(', ')
-                print(f"\n{category}:")
-                for label, value in zip(labels, values):
-                    # Format specific values
-                    if 'Memory' in label and value.replace('.','').isdigit():
-                        value_gb = float(value) / 1024 if float(value) > 1024 else float(value)
-                        unit = 'GB' if float(value) > 1024 else 'MB'
-                        print(f"  {label}: {value_gb:.2f} {unit} ({value} MiB)")
-                    elif 'Clock' in label and value.replace('.','').isdigit():
-                        print(f"  {label}: {value} MHz")
-                    elif 'Power' in label and value.replace('.','').isdigit():
-                        print(f"  {label}: {value} W")
-                    elif 'Temp' in label:
-                        print(f"  {label}: {value}°C")
-                    elif 'Utilization' in label or 'Controller' in label:
-                        print(f"  {label}: {value}%")
-                    elif 'PCIe' in label and 'Width' in label:
-                        print(f"  {label}: x{value}")
-                    else:
-                        print(f"  {label}: {value}")
-                
-                # Store for later use
-                for label, value in zip(labels, values):
-                    gpu_info[label.lower().replace(' ', '_')] = value
-        
-        # Get memory bus width and bandwidth (these require specific queries)
-        bus_result = subprocess.run(
-            ['nvidia-smi', '--query-gpu=index', '--format=csv,noheader'],
-            capture_output=True, text=True, shell=True
-        )
-        
-        if bus_result.returncode == 0:
-            # Try to get additional architecture info
-            arch_result = subprocess.run(
-                ['nvidia-smi', '-q', '-d', 'MEMORY'],
-                capture_output=True, text=True, shell=True
-            )
-            
-            if arch_result.returncode == 0:
-                output_lines = arch_result.stdout.split('\n')
-                for line in output_lines:
-                    if 'Bus Width' in line:
-                        bus_width = line.split(':')[1].strip()
-                        print(f"\nMemory Architecture:")
-                        print(f"  Memory Bus Width: {bus_width}")
-                        gpu_info['memory_bus_width'] = bus_width
-                        
-                        # Calculate theoretical bandwidth if we have clock speed
-                        if 'current_mem_clock' in gpu_info and gpu_info['current_mem_clock'].isdigit():
-                            mem_clock_mhz = float(gpu_info['current_mem_clock'])
-                            bus_width_bits = int(bus_width.replace('bits', '').strip())
-                            # Bandwidth (GB/s) = (memory_clock_MHz × bus_width_bits × 2) / 8 / 1000
-                            bandwidth_gbps = (mem_clock_mhz * bus_width_bits * 2) / 8 / 1000
-                            print(f"  Theoretical Bandwidth: {bandwidth_gbps:.1f} GB/s")
-        
-        # Performance state
-        pstate_result = subprocess.run(
-            ['nvidia-smi', '--query-gpu=pstate', '--format=csv,noheader'],
-            capture_output=True, text=True, shell=True
-        )
-        
-        if pstate_result.returncode == 0:
-            print(f"\nPerformance State: {pstate_result.stdout.strip()}")
-            
-    except Exception as e:
-        print(f"\n⚠ Warning: Could not get complete GPU info")
-        print(f"  Error: {e}")
-        print("  Ensure NVIDIA drivers are installed and nvidia-smi is accessible")
-        gpu_info['error'] = str(e)
-    
-    # CUDA compilation check
-    try:
-        import llama_cpp
-        if hasattr(llama_cpp, 'llama_backend_init'):
-            print(f"\n✓ llama.cpp CUDA backend available")
-        else:
-            print(f"\n⚠ llama.cpp may not have CUDA support")
-    except:
-        pass
-    
-    return gpu_info
-
-gpu_info = get_nvidia_info()
-
-# Memory requirement estimation
-print(f"\n" + "="*60)
-print("Model Memory Requirements (Estimated)")
-print("="*60)
-print(f"  Model: Qwen3-8B-Q5_K_M (5.85 GB file)")
-print(f"  Context: {8192} tokens")
-print(f"  Estimated VRAM needed: ~7-8 GB")
-print(f"  Recommended free VRAM: >8 GB")
-
-if gpu_info.get('free_memory'):
-    free_gb = float(gpu_info['free_memory']) / 1024
-    if free_gb < 8:
-        print(f"\n⚠ Warning: Only {free_gb:.2f} GB VRAM free, model may not fit entirely on GPU")
-
-if not gpu_info.get('gpu_model') and not gpu_info.get('error'):
-    print("\n⚠ No NVIDIA GPU detected - model will run slowly!")
-    response = input("Continue anyway? (y/n): ")
-    if response.lower() != 'y':
-        sys.exit(0)
 
 # %% [2.0] Configuration
 class Config:
@@ -688,7 +564,7 @@ def chat_loop():
 
 # %% [8.0] Utility Functions
 def benchmark():
-    """Benchmark generation speed with GPU monitoring"""
+    """Quick benchmark of generation speed with GPU monitoring"""
     import time
     
     prompt = "Write a haiku about AI:"
@@ -697,7 +573,7 @@ def benchmark():
     
     # Pre-benchmark GPU state
     if Config.USE_GPU:
-        pre_result = subprocess.run(['nvidia-smi', '--query-gpu=utilization.gpu,memory.used', '--format=csv,noheader'], 
+        pre_result = subprocess.run(['nvidia-smi', '--query-gpu=utilization.gpu,memory.used', '--format=csv,noheader,nounits'], 
                                    capture_output=True, text=True, shell=True)
         if pre_result.returncode == 0:
             print(f"  Pre-benchmark GPU state: {pre_result.stdout.strip()}")
@@ -712,7 +588,7 @@ def benchmark():
     
     # Post-benchmark GPU state
     if Config.USE_GPU:
-        post_result = subprocess.run(['nvidia-smi', '--query-gpu=utilization.gpu,memory.used', '--format=csv,noheader'], 
+        post_result = subprocess.run(['nvidia-smi', '--query-gpu=utilization.gpu,memory.used', '--format=csv,noheader,nounits'], 
                                     capture_output=True, text=True, shell=True)
         if post_result.returncode == 0:
             print(f"  Post-benchmark GPU state: {post_result.stdout.strip()}")
@@ -743,7 +619,7 @@ def model_info():
         
         # Current GPU status
         result = subprocess.run(['nvidia-smi', '--query-gpu=name,utilization.gpu,memory.used,memory.free,temperature.gpu', 
-                               '--format=csv,noheader'], 
+                               '--format=csv,noheader,nounits'], 
                               capture_output=True, text=True, shell=True)
         if result.returncode == 0:
             print("\nCurrent GPU Status:")
@@ -752,8 +628,8 @@ def model_info():
                 if len(parts) >= 5:
                     name, util, used, free, temp = parts[:5]
                     print(f"  GPU {i} ({name}):")
-                    print(f"    Utilization: {util}")
-                    print(f"    Memory: {used} used, {free} free")
+                    print(f"    Utilization: {util}%")
+                    print(f"    Memory: {used} MiB used, {free} MiB free")
                     print(f"    Temperature: {temp}°C")
 
 def gpu_monitor():
@@ -769,7 +645,7 @@ def gpu_monitor():
     try:
         while True:
             result = subprocess.run(['nvidia-smi', '--query-gpu=utilization.gpu,memory.used,memory.free,temperature.gpu,power.draw', 
-                                   '--format=csv,noheader'], 
+                                   '--format=csv,noheader,nounits'], 
                                   capture_output=True, text=True, shell=True)
             if result.returncode == 0:
                 # Clear previous lines
@@ -780,7 +656,7 @@ def gpu_monitor():
                     if len(parts) >= 4:
                         util, used, free, temp = parts[:4]
                         power = parts[4] if len(parts) > 4 else "N/A"
-                        print(f"GPU {i}: Util {util} | Mem {used}/{free} | Temp {temp}°C | Power {power}")
+                        print(f"GPU {i}: Util {util}% | Mem {used}/{free} MiB | Temp {temp}°C | Power {power}W")
                 
                 time.sleep(2)
     except KeyboardInterrupt:
