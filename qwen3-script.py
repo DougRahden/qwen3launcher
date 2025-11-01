@@ -272,7 +272,7 @@ if gpu_info.get('free_memory'):
     else:
         print(f"\n{free_gb:.2f} GB VRAM available - excellent")
 
-if not gpu_info.get('gpu_model') and not gpu_info.get('error'):
+if not gpu_info.get('compute_cap') and not gpu_info.get('error'):
     print("\nWarning: No NVIDIA GPU detected - CPU mode will be slow!")
     response = input("Continue anyway? (y/n): ")
     if response.lower() != 'y':
